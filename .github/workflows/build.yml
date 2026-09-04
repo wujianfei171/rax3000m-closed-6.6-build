@@ -47,27 +47,30 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Apply single-device config (cmcc_rax3000m-emmc)
+      - name: Apply device config (upstream mt7981-ax3000 verbatim)
         working-directory: openwrt
         run: |
-          cp -f $GITHUB_WORKSPACE/rax3000m-emmc.config .config
+          cp -f $GITHUB_WORKSPACE/upstream_mt7981-ax3000.config .config
           make defconfig
-          echo "--- enabled target devices ---"
-          grep '^CONFIG_TARGET_DEVICE.*=y' .config || true
-          grep -c 'cmcc_rax3000m-emmc' .config
+          echo "--- enabled target devices (should be >0) ---"
+          grep '^CONFIG_TARGET_DEVICE.*=y' .config | wc -l
+          grep '^CONFIG_TARGET_DEVICE.*cmcc_rax3000m' .config
 
       - name: Build firmware
         working-directory: openwrt
         run: |
           make -j$(nproc) || make -j1 V=s
-          echo "--- images ---"
-          ls -la bin/targets/mediatek/filogic/ | head -40
+          echo "--- images (all mediatek bin dirs) ---"
+          find bin/targets/mediatek -maxdepth 2 -type f | grep -v '/packages/' | sort
+          echo "--- cmcc_rax3000m images ---"
+          ls -la bin/targets/mediatek/*/ | grep -i rax3000m || echo NONE
+          test -n "$(ls bin/targets/mediatek/*/*cmcc_rax3000m* 2>/dev/null)" && echo FOUND_IMAGES || (echo NO_IMAGES_FOR_RAX3000M; exit 1)
 
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
-          cp openwrt/bin/targets/mediatek/filogic/*cmcc_rax3000m* artifacts/ 2>/dev/null || \
-          cp openwrt/bin/targets/mediatek/filogic/* artifacts/ 2>/dev/null || true
+          cp openwrt/bin/targets/mediatek/*/*cmcc_rax3000m* artifacts/ 2>/dev/null || true
+          cp openwrt/bin/targets/mediatek/*/config.buildinfo openwrt/bin/targets/mediatek/*/version.buildinfo artifacts/ 2>/dev/null || true
           ls -la artifacts/
           (cd artifacts && sha256sum * > sha256sums.txt 2>/dev/null || true)
 
