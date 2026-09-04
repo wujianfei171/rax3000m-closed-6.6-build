@@ -1,0 +1,80 @@
+name: Build RAX3000M eMMC (padavanonly 6.6 closed mt_wifi)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          df -h / | tail -1
+
+      - name: Checkout (build scripts/config)
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler fastjar flex gawk \
+            gcc-multilib g++-multilib gettext git intltool libelf-dev libncurses-dev \
+            libreadline-dev libssl-dev libtool lrzsz mkisofs patch pkgconf python3 \
+            python3-ply python3-docutils qemu-utils re2c rsync squashfs-tools subversion \
+            swig texinfo unzip upx-ucl wget xxd zlib1g-dev
+          sudo apt-get -y -qq autoremove
+
+      - name: Clone padavanonly source (openwrt-24.10-6.6)
+        run: |
+          git clone --depth=1 --filter=blob:none \
+            -b openwrt-24.10-6.6 \
+            https://github.com/padavanonly/immortalwrt-mt798x-6.6 openwrt
+          ls openwrt | head
+
+      - name: Update & install feeds
+        working-directory: openwrt
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Apply single-device config (cmcc_rax3000m-emmc)
+        working-directory: openwrt
+        run: |
+          cp -f $GITHUB_WORKSPACE/rax3000m-emmc.config .config
+          make defconfig
+          echo "--- enabled target devices ---"
+          grep '^CONFIG_TARGET_DEVICE.*=y' .config || true
+          grep -c 'cmcc_rax3000m-emmc' .config
+
+      - name: Build firmware
+        working-directory: openwrt
+        run: |
+          make -j$(nproc) || make -j1 V=s
+          echo "--- images ---"
+          ls -la bin/targets/mediatek/filogic/ | head -40
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          cp openwrt/bin/targets/mediatek/filogic/*cmcc_rax3000m* artifacts/ 2>/dev/null || \
+          cp openwrt/bin/targets/mediatek/filogic/* artifacts/ 2>/dev/null || true
+          ls -la artifacts/
+          (cd artifacts && sha256sum * > sha256sums.txt 2>/dev/null || true)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rax3000m-emmc-6.6-closed
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: warn
