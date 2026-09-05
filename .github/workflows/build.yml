@@ -47,24 +47,24 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Apply device config (upstream mt7981-ax3000 verbatim)
+      - name: Apply device config (upstream mt7981-ax3000 + enable eMMC MTK device)
         working-directory: openwrt
         run: |
           cp -f $GITHUB_WORKSPACE/upstream_mt7981-ax3000.config .config
+          # 真实设备名(上游 defconfig 里的是过时的 cmcc_rax3000m-emmc):
+          printf 'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk=y\n' >> .config
           make defconfig
-          echo "--- enabled target devices (should be >0) ---"
-          grep '^CONFIG_TARGET_DEVICE.*=y' .config | wc -l
+          echo "--- enabled cmcc_rax3000m devices ---"
           grep '^CONFIG_TARGET_DEVICE.*cmcc_rax3000m' .config
+          grep -c 'cmcc_rax3000m-emmc-mtk=y' .config
 
       - name: Build firmware
         working-directory: openwrt
         run: |
           make -j$(nproc) || make -j1 V=s
-          echo "--- images (all mediatek bin dirs) ---"
-          find bin/targets/mediatek -maxdepth 2 -type f | grep -v '/packages/' | sort
           echo "--- cmcc_rax3000m images ---"
-          ls -la bin/targets/mediatek/*/ | grep -i rax3000m || echo NONE
-          test -n "$(ls bin/targets/mediatek/*/*cmcc_rax3000m* 2>/dev/null)" && echo FOUND_IMAGES || (echo NO_IMAGES_FOR_RAX3000M; exit 1)
+          find bin/targets/mediatek -maxdepth 2 -type f | grep cmcc_rax3000m | sort
+          test -n "$(ls bin/targets/mediatek/*/*cmcc_rax3000m-emmc-mtk*squashfs-sysupgrade.bin 2>/dev/null)" && echo FOUND_EMMC_TAR || (echo NO_EMMC_MTK_TAR; exit 1)
 
       - name: Collect artifacts
         run: |
