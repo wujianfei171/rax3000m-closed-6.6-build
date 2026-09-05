@@ -47,16 +47,24 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Apply device config (upstream mt7981-ax3000 + enable eMMC MTK device)
+      - name: Apply device config (upstream mt7981-ax3000 + enable eMMC MTK device + user packages)
         working-directory: openwrt
         run: |
           cp -f $GITHUB_WORKSPACE/upstream_mt7981-ax3000.config .config
           # 真实设备名(上游 defconfig 里的是过时的 cmcc_rax3000m-emmc):
           printf 'CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_cmcc_rax3000m-emmc-mtk=y\n' >> .config
+          # 用户选定内置包(不含 luci-app-upnp;SQM 因源缺 tc 不可编):
+          for p in luci-theme-argon luci-app-argon-config luci-app-watchcat luci-app-autoreboot curl; do
+            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
+          done
           make defconfig
           echo "--- enabled cmcc_rax3000m devices ---"
           grep '^CONFIG_TARGET_DEVICE.*cmcc_rax3000m' .config
-          grep -c 'cmcc_rax3000m-emmc-mtk=y' .config
+          echo "--- user packages enabled ---"
+          for p in luci-theme-argon luci-app-argon-config luci-app-watchcat luci-app-autoreboot curl; do
+            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK $p"; else echo "MISSING $p"; fi
+          done
+          grep -q '^CONFIG_PACKAGE_curl=y' .config && echo PACKAGES_OK || { echo PACKAGE_SET_FAIL; exit 1; }
 
       - name: Build firmware
         working-directory: openwrt
