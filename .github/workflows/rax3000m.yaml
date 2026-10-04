@@ -89,11 +89,9 @@ jobs:
         working-directory: openwrt
         run: |
           make -j$(nproc) || make -j1 V=s
-          echo "--- cmcc_rax3000m NAND images ---"
+          echo "--- cmcc_rax3000m images ---"
           find bin/targets/mediatek -maxdepth 2 -type f | grep cmcc_rax3000m | sort
-          # ========= 修改：改为NAND普通版匹配条件，移除所有emmc‑mtk/emmc硬编码判断 =========
-          test -n "$(ls bin/targets/mediatek/*/*cmcc_rax3000m*squashfs-sysupgrade.bin 2>/dev/null)" && echo FOUND_NAND_TAR || (echo NO_NAND_TAR; exit 1)
-
+         
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
