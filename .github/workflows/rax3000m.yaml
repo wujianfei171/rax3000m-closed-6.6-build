@@ -53,12 +53,12 @@ jobs:
         working-directory: openwrt
         run: |
           cp -f $GITHUB_WORKSPACE/upstream_mt7981-ax3000.config .config
-          # 【原版保留，不删除】用户选定内置包(不含 luci-app-upnp;SQM 因源缺 tc 不可编):
-          for p in luci-theme-argon luci-app-argon-config luci-app-watchcat luci-app-autoreboot curl; do
+          # 【修改：移除watchcat，增加upnp】
+          for p in luci-theme-argon luci-app-argon-config luci-app-upnp luci-app-autoreboot curl; do
             printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
           done
-          # 中文语言包(与上面内置应用配套):
-          for p in luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-watchcat-zh-cn luci-i18n-autoreboot-zh-cn; do
+          # 中文语言包：移除watchcat中文包，增加upnp中文包
+          for p in luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-upnp-zh-cn luci-i18n-autoreboot-zh-cn; do
             printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
           done
 
@@ -76,8 +76,8 @@ jobs:
           echo "--- enabled cmcc_rax3000m devices ---"
           grep '^CONFIG_TARGET_DEVICE.*cmcc_rax3000m' .config
           echo "--- user packages enabled ---"
-          for p in luci-theme-argon luci-app-argon-config luci-app-watchcat luci-app-autoreboot curl \
-                   luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-watchcat-zh-cn luci-i18n-autoreboot-zh-cn; do
+          for p in luci-theme-argon luci-app-argon-config luci-app-upnp luci-app-autoreboot curl \
+                   luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-upnp-zh-cn luci-i18n-autoreboot-zh-cn; do
             if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK $p"; else echo "WARN-MISSING $p"; fi
           done
           grep -q '^CONFIG_PACKAGE_curl=y' .config && grep -q '^CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' .config && echo PACKAGES_OK || { echo PACKAGE_SET_FAIL; exit 1; }
@@ -103,7 +103,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rax3000m-nand-6.6-closed-nikki-usb
+          name: rax3000m-nand-6.6-closed-nikki-usb-upnp
           path: artifacts/
           retention-days: 90
           if-no-files-found: warn
