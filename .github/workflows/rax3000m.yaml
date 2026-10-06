@@ -2,9 +2,7 @@ name: Build RAX3000M NAND (padavanonly 6.6 closed mt_wifi + nikki + usb tether)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-
+  
 concurrency:
   group: build
   cancel-in-progress: false
