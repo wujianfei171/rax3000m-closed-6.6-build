@@ -4,7 +4,7 @@
 
 - 源码:[padavanonly/immortalwrt-mt798x-6.6](https://github.com/padavanonly/immortalwrt-mt798x-6.6),分支 `openwrt-24.10-6.6`(内核 6.6,**闭源 mt_wifi 驱动**,WPA3 / HNAT / WED)
 - 仅编译单台设备:`cmcc_rax3000m-nand`(见 `rax3000m-nand.config`,由上游 `defconfig/mt7981-ax3000.config` 过滤而来)
-- 触发:仓库 Actions 页面 → **Run workflow**(或 push 到 main)
+- 触发:仓库 Actions 页面 → **Run workflow**
 - 产物:Actions artifact `rax3000m-nand-6.6-closed`,含镜像与 `sha256sums.txt`,保留 90 天
 
 ## 刷机提醒
