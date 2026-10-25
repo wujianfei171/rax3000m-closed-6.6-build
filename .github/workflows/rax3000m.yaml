@@ -1,8 +1,8 @@
-name: Build RAX3000M NAND (padavanonly 6.6 closed mt_wifi + nikki + usb tether + openlist2)
+name: Build RAX3000M NAND
 
 on:
   workflow_dispatch:
-  
+
 concurrency:
   group: build
   cancel-in-progress: false
@@ -15,109 +15,73 @@ jobs:
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL 2>/dev/null || true
-          df -h / | tail -1
+          df -h /
 
-      - name: Checkout (build scripts/config)
+      - name: Checkout build scripts
         uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
-            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-            bzip2 ccache clang cmake cpio curl device-tree-compiler fastjar flex gawk \
-            gcc-multilib g++-multilib gettext git intltool libelf-dev libncurses-dev \
-            libreadline-dev libssl-dev libtool lrzsz mkisofs patch pkgconf python3 \
-            python3-ply python3-docutils qemu-utils re2c rsync squashfs-tools subversion \
-            swig texinfo unzip upx-ucl wget xxd zlib1g-dev
-          sudo apt-get -y -qq autoremove
+            autoconf automake autopoint binutils bison build-essential bzip2 ccache \
+            clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib \
+            gettext git intltool libelf-dev libncurses-dev libreadline-dev libssl-dev \
+            libtool patch pkgconf python3 python3-ply qemu-utils re2c rsync squashfs-tools \
+            unzip wget xxd zlib1g-dev
 
-      - name: Clone padavanonly source (openwrt-24.10-6.6)
+      - name: Clone source
         run: |
           git clone --depth=1 --filter=blob:none \
             -b openwrt-24.10-6.6 \
             https://github.com/padavanonly/immortalwrt-mt798x-6.6 openwrt
-          ls openwrt | head
 
       - name: Update & install feeds
         working-directory: openwrt
         run: |
-          # =========【修改】添加 nikki 和 openlist2 第三方源 =========
           echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >> feeds.conf.default
           echo "src-git openlist2 https://github.com/sbwml/luci-app-openlist2.git" >> feeds.conf.default
-
           ./scripts/feeds update -a
-
-          # =========【关键】替换 Golang 为 26.x，满足 openlist2 编译要求 =========
           rm -rf feeds/packages/lang/golang
           git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
-
           ./scripts/feeds install -a
 
-      - name: Apply device config (upstream mt7981-ax3000 NAND普通版)
+      - name: Apply device config
         working-directory: openwrt
         run: |
           cp -f $GITHUB_WORKSPACE/upstream_mt7981-ax3000.config .config
 
-          # 【修改：移除watchcat，增加upnp】
-          for p in luci-theme-argon luci-app-argon-config luci-app-upnp luci-app-autoreboot curl; do
-            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
-          done
-          # 中文语言包：移除watchcat中文包，增加upnp中文包
-          for p in luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-upnp-zh-cn luci-i18n-autoreboot-zh-cn; do
-            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
-          done
-
-          # ====================【新增1】USB手机共享网络 RNDIS/NCM ====================
-          for p in kmod-usb-net kmod-usb-net-rndis kmod-usb-net-cdc-ncm kmod-usb-net-cdc-ether usbutils; do
-            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
-          done
-
-          # ====================【新增2】Nikki插件+luci+中文 ====================
-          for p in nikki luci-app-nikki luci-i18n-nikki-zh-cn; do
-            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
-          done
-
-          # ====================【新增3】OpenList2 插件+核心+中文 ====================
-          for p in openlist2 luci-app-openlist2 luci-i18n-openlist2-zh-cn; do
+          for p in \
+            luci-i18n-base-zh-cn curl \
+            kmod-usb-net kmod-usb-net-rndis kmod-usb-net-cdc-ncm kmod-usb-net-cdc-ether usbutils \
+            nikki luci-app-nikki luci-i18n-nikki-zh-cn \
+            openlist2 luci-app-openlist2 luci-i18n-openlist2-zh-cn; do
             printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
           done
 
           make defconfig
-          echo "--- enabled cmcc_rax3000m devices ---"
-          grep '^CONFIG_TARGET_DEVICE.*cmcc_rax3000m' .config
-          echo "--- user packages enabled ---"
-          for p in luci-theme-argon luci-app-argon-config luci-app-upnp luci-app-autoreboot curl \
-                   luci-i18n-base-zh-cn luci-i18n-argon-config-zh-cn luci-i18n-upnp-zh-cn luci-i18n-autoreboot-zh-cn; do
-            if grep -q "^CONFIG_PACKAGE_${p}=y" .config; then echo "OK $p"; else echo "WARN-MISSING $p"; fi
-          done
-          grep -q '^CONFIG_PACKAGE_curl=y' .config && grep -q '^CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' .config && echo PACKAGES_OK || { echo PACKAGE_SET_FAIL; exit 1; }
 
-          # 打印新增包检查
-          echo "--- check added nikki & usb packages ---"
-          grep -E 'CONFIG_PACKAGE_(nikki|kmod-usb-net-rndis)' .config
-          echo "--- check added openlist2 packages ---"
-          grep -E 'CONFIG_PACKAGE_(openlist2|luci-app-openlist2)' .config || true
+          for p in nikki luci-app-openlist2 luci-i18n-base-zh-cn curl; do
+            grep -q "^CONFIG_PACKAGE_${p}=y" .config || { echo "MISSING: $p"; exit 1; }
+          done
+          echo "PACKAGES_OK"
 
       - name: Build firmware
         working-directory: openwrt
-        run: |
-          make -j$(nproc) || make -j1 V=s
-          echo "--- cmcc_rax3000m images ---"
-          find bin/targets/mediatek -maxdepth 2 -type f | grep cmcc_rax3000m | sort
-         
+        run: make -j$(nproc) || make -j1 V=s
+
       - name: Collect artifacts
         run: |
           mkdir -p artifacts
           cp openwrt/bin/targets/mediatek/*/*cmcc_rax3000m* artifacts/ 2>/dev/null || true
-          cp openwrt/bin/targets/mediatek/*/config.buildinfo openwrt/bin/targets/mediatek/*/version.buildinfo artifacts/ 2>/dev/null || true
-          ls -la artifacts/
+          cp openwrt/bin/targets/mediatek/*/*.buildinfo artifacts/ 2>/dev/null || true
           (cd artifacts && sha256sum * > sha256sums.txt 2>/dev/null || true)
+          ls -la artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rax3000m-nand-6.6-closed-nikki-usb-upnp-openlist2
+          name: rax3000m-nand-6.6
           path: artifacts/
           retention-days: 90
           if-no-files-found: warn
