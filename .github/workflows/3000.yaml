@@ -1,0 +1,101 @@
+name: Build RAX3000M NAND (ImmortalWrt open source mt76 + nikki + usb tether + openlist2 + upnp + argon)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-openwrt
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 390
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          df -h / | tail -1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler fastjar flex gawk \
+            gcc-multilib g++-multilib gettext git intltool libelf-dev libncurses-dev \
+            libreadline-dev libssl-dev libtool lrzsz mkisofs patch pkgconf python3 \
+            python3-ply python3-docutils qemu-utils re2c rsync squashfs-tools subversion \
+            swig texinfo unzip upx-ucl wget xxd zlib1g-dev
+          sudo apt-get -y -qq autoremove
+
+      - name: Clone ImmortalWrt source (openwrt-24.10)
+        run: |
+          git clone --depth=1 --filter=blob:none \
+            -b openwrt-24.10 \
+            https://github.com/immortalwrt/immortalwrt openwrt
+
+      - name: Update & install feeds
+        working-directory: openwrt
+        run: |
+          echo "src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;main" >> feeds.conf.default
+          echo "src-git openlist2 https://github.com/sbwml/luci-app-openlist2.git" >> feeds.conf.default
+
+          ./scripts/feeds update -a
+
+          rm -rf feeds/packages/lang/golang
+          git clone https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
+
+          ./scripts/feeds install -a
+
+      - name: Apply device config (open source mt76, make defconfig)
+        working-directory: openwrt
+        run: |
+          # 选中 RAX3000M NAND，开源 mediatek/filogic 目标
+          echo "CONFIG_TARGET_mediatek=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
+          echo "CONFIG_TARGET_mediatek_filogic_DEVICE_cmcc_rax3000m=y" >> .config
+
+          # 追加软件包：保留之前精简列表，并加回 UPnP + Argon 主题
+          for p in \
+            curl luci-i18n-base-zh-cn \
+            kmod-usb-net kmod-usb-net-rndis kmod-usb-net-cdc-ncm kmod-usb-net-cdc-ether usbutils \
+            nikki luci-app-nikki luci-i18n-nikki-zh-cn \
+            openlist2 luci-app-openlist2 luci-i18n-openlist2-zh-cn \
+            luci-app-upnp luci-i18n-upnp-zh-cn \
+            luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn; do
+            printf 'CONFIG_PACKAGE_%s=y\n' "$p" >> .config
+          done
+
+          # 生成默认配置：自动带上 RAX3000M 开源 profile 的 DEVICE_PACKAGES 和依赖
+          make defconfig
+
+          # 关键包门禁检查
+          for p in nikki luci-app-openlist2 luci-i18n-base-zh-cn curl luci-app-upnp luci-theme-argon; do
+            grep -q "^CONFIG_PACKAGE_${p}=y" .config || { echo "MISSING: $p"; exit 1; }
+          done
+          echo "PACKAGES_OK"
+
+      - name: Build firmware
+        working-directory: openwrt
+        run: |
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          cp openwrt/bin/targets/mediatek/*/*cmcc_rax3000m* artifacts/ 2>/dev/null || true
+          cp openwrt/bin/targets/mediatek/*/*.buildinfo artifacts/ 2>/dev/null || true
+          (cd artifacts && sha256sum * > sha256sums.txt 2>/dev/null || true)
+          ls -la artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rax3000m-nand-openwrt-mt76-upnp-argon
+          path: artifacts/
+          retention-days: 90
+          if-no-files-found: warn
